@@ -1,0 +1,571 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Challenge {
+  id          String   @id @default(uuid())
+  creator     User     @relation(fields: [creatorId], references: [id])
+  creatorId   String
+  title       String   @db.VarChar(100)
+  description String?
+  stakeAmount Float
+  image       String
+  startDate   DateTime
+  endDate     DateTime
+  verificationType String
+  difficulty  String   @default("MODERATE") // EASY, MODERATE, HARD
+  metrics     String
+  rules       String[]
+  escrowAddress String? @unique
+  createdAt   DateTime @default(now())
+
+  // Admin control fields
+  isPaused    Boolean  @default(false)
+  pausedAt    DateTime?
+  endedEarly  Boolean  @default(false)
+  isCompleted Boolean  @default(false)
+  completedAt DateTime?
+  
+  // New fields
+  totalPrizePool Float  @default(0)
+  participants   Int    @default(0)
+  hostType       String @default("PERSONAL") // PERSONAL, FRIEND, CORPORATE
+  sponsor        String?
+  trackingMetrics String[] @default([])
+  
+  // Blockchain integration
+  blockchainId String? // Solana program challenge ID
+  transactionSignature String? // Creation transaction signature
+  
+  // Payout system
+  payoutsFinalized  Boolean  @default(false)
+
+  userChallenges UserChallenge[]
+  transactions Transaction[]
+  submissions Submission[]
+  escrowWallet EscrowWallet?
+  payoutJobs       PayoutJob[]
+  dailySettlements DailySettlement[]
+}
+model User {
+  id             String       @id @default(uuid())
+  createdChallenges Challenge[]
+  userChallenges UserChallenge[]
+  transactions   Transaction[]
+  submissions    Submission[]
+  disputes       Dispute[]
+  // Auth related fields
+  name          String?
+  preferredName String?
+  bio           String?   @db.Text
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  accounts      Account[]
+  sessions      Session[]
+
+  // Wallet
+  walletAddress String?   // Solana wallet address
+
+  // Admin flag (deprecated - use AdminRole instead)
+  isAdmin       Boolean   @default(false)
+
+  // Two-Factor Authentication
+  twoFactorSecret    String?   // Encrypted TOTP secret
+  twoFactorEnabled   Boolean   @default(false)
+  twoFactorBackupCodes String[] // Encrypted backup codes
+
+  // Admin moderation fields
+  isBlocked     Boolean   @default(false)
+  isFlagged     Boolean   @default(false)
+  flagReason    String?
+
+  // Profile fields
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  adminRole     AdminRole?
+  authLogs      AuthenticationLog[]
+
+  // Payout relations
+  payoutJobs              PayoutJob[]
+
+  // Notification relations
+  pushTokens              PushToken[]
+  notificationPreference  NotificationPreference?
+  notificationLogs        NotificationLog[]
+}
+
+model UserChallenge {
+  id          String    @id @default(uuid())
+  user        User      @relation(fields: [userId], references: [id])
+  userId      String
+  challenge   Challenge @relation(fields: [challengeId], references: [id])
+  challengeId String
+  status      ChallengeStatus
+  progress    Float
+  stakeAmount Float
+  walletAddress String? // Solana wallet address for payouts
+  startDate   DateTime
+  endDate     DateTime?
+  submissions Submission[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([userId, challengeId])
+}
+
+// NextAuth Models
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  type               String
+  provider           String
+  providerAccountId  String
+  refresh_token      String?  @db.Text
+  access_token       String?  @db.Text
+  expires_at         Int?
+  token_type         String?
+  scope              String?
+  id_token           String?  @db.Text
+  session_state      String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+enum MetricType {
+  STEPS
+  MEDITATION_MINUTES
+  CODE_COMMITS
+}
+
+enum FrequencyType {
+  DAILY
+  WEEKLY
+}
+
+enum ChallengeStatus {
+  ACTIVE
+  COMPLETED
+  FAILED
+}
+
+enum TransactionType {
+  STAKE
+  REWARD
+  REFUND
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model Transaction {
+  id                  String            @id @default(uuid())
+  user                User              @relation(fields: [userId], references: [id])
+  userId              String
+  challenge           Challenge?        @relation(fields: [challengeId], references: [id])
+  challengeId         String?
+  transactionType     TransactionType
+  amount              Float
+  description         String?
+  transactionSignature String?
+  timestamp           DateTime          @default(now())
+  status              TransactionStatus @default(COMPLETED)
+  metadata            Json?             // For any additional data
+  payoutJobId         String?           // Link back to PayoutJob
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  @@index([userId])
+  @@index([challengeId])
+  @@index([transactionType])
+}
+
+model Submission {
+  id              String           @id @default(uuid())
+  user            User             @relation(fields: [userId], references: [id])
+  userId          String
+  challenge       Challenge        @relation(fields: [challengeId], references: [id])
+  challengeId     String
+  userChallenge   UserChallenge    @relation(fields: [userChallengeId], references: [id])
+  userChallengeId String
+  disputes        Dispute[]
+
+  // Submission details
+  imageUrl        String           // Path/URL to uploaded proof image
+  description     String?          // Optional description from user
+  submissionDate  DateTime         @default(now())
+
+  // Review details
+  status          SubmissionStatus @default(PENDING)
+  reviewedBy      String?          // Admin user ID who reviewed
+  reviewedAt      DateTime?        // When the review was completed
+  reviewComments  String?          // Optional feedback from admin
+
+  // Metadata
+  metadata        Json?            // For any additional data (file size, dimensions, etc.)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([userId])
+  @@index([challengeId])
+  @@index([userChallengeId])
+  @@index([status])
+  @@index([submissionDate])
+}
+
+model EscrowWallet {
+  id          String   @id @default(cuid())
+  challenge   Challenge @relation(fields: [challengeId], references: [id])
+  challengeId String   @unique
+  publicKey   String
+  secretKey   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Admin Models
+
+model Dispute {
+  id               String        @id @default(uuid())
+  submission       Submission    @relation(fields: [submissionId], references: [id])
+  submissionId     String
+  user             User          @relation(fields: [userId], references: [id])
+  userId           String
+  reason           String        @db.Text
+  status           DisputeStatus @default(PENDING)
+  originalDecision String        // The original review decision (REJECTED)
+  resolution       String?       // Admin resolution notes
+  resolvedBy       String?       // Admin user ID who resolved
+  resolvedAt       DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  @@index([status])
+  @@index([userId])
+  @@index([submissionId])
+}
+
+model AuditLog {
+  id        String       @id @default(uuid())
+  action    String       // e.g., "proof_approved", "user_blocked", "challenge_finalized"
+  actor     String       // Email or identifier of admin
+  actorId   String?      // Admin user ID
+  target    String       // Target entity (wallet address, challenge ID, etc.)
+  details   String       @db.Text
+  type      AuditLogType @default(INFO)
+  metadata  Json?        // Additional structured data
+  createdAt DateTime     @default(now())
+
+  @@index([action])
+  @@index([actorId])
+  @@index([createdAt])
+}
+
+model SystemSettings {
+  id                String   @id @default("global")
+  proofCutoffTime   String   @default("23:00")      // UTC time for daily proof deadline
+  reviewWindowHours Int      @default(24)           // Hours admins have to review proofs
+  maxProofsPerDay   Int      @default(1)            // Max proofs a user can submit per day
+  allowedFileTypes  String[] @default(["jpg", "png", "heic", "mp4", "mov", "webp"])
+  emergencyPause    Boolean  @default(false)        // Pause all proof submissions
+  updatedAt         DateTime @updatedAt
+  updatedBy         String?                         // Admin who last updated
+}
+
+enum DisputeStatus {
+  PENDING
+  RESOLVED
+}
+
+enum AuditLogType {
+  SUCCESS
+  DESTRUCTIVE
+  WARNING
+  INFO
+}
+
+// Admin Role Management
+model AdminRole {
+  id        String    @id @default(uuid())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    String    @unique
+  role      AdminRoleType @default(ADMIN)
+  grantedBy String?   // User ID of admin who granted this role
+  grantedAt DateTime  @default(now())
+  revokedAt DateTime? // If role was revoked
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([role])
+  @@index([isActive])
+}
+
+enum AdminRoleType {
+  SUPER_ADMIN  // Full access, can manage other admins
+  ADMIN        // Standard admin access
+  MODERATOR    // Limited access (proofs, disputes only)
+}
+
+// Authentication Logging
+model AuthenticationLog {
+  id            String   @id @default(uuid())
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  userId        String?
+  email         String   // Email attempted (for failed logins where user doesn't exist)
+  success       Boolean
+  method        AuthMethod
+  ipAddress     String?
+  userAgent     String?
+  failureReason String?  // "invalid_password", "2fa_required", "2fa_failed", "blocked", etc.
+  twoFactorUsed Boolean  @default(false)
+  createdAt     DateTime @default(now())
+
+  @@index([userId])
+  @@index([email])
+  @@index([success])
+  @@index([createdAt])
+}
+
+enum AuthMethod {
+  EMAIL_PASSWORD
+  GOOGLE_OAUTH
+  MAGIC_LINK
+  TWO_FACTOR
+}
+
+// ==================== NOTIFICATION SYSTEM ====================
+
+// Store Expo push tokens for each user device
+model PushToken {
+  id          String   @id @default(uuid())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      String
+  token       String   // Expo push token (ExponentPushToken[...])
+  deviceType  DeviceType @default(UNKNOWN)
+  deviceName  String?  // Optional device identifier
+  isActive    Boolean  @default(true)
+  lastUsedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, token])
+  @@index([userId])
+  @@index([token])
+  @@index([isActive])
+}
+
+enum DeviceType {
+  IOS
+  ANDROID
+  UNKNOWN
+}
+
+// User notification preferences
+model NotificationPreference {
+  id                    String   @id @default(uuid())
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId                String   @unique
+
+  // Global toggles
+  pushEnabled           Boolean  @default(true)
+  emailEnabled          Boolean  @default(false) // For future email notifications
+
+  // Timing preferences
+  reminderTime          String   @default("19:00") // Local time (HH:mm format)
+  timezone              String   @default("UTC")   // IANA timezone (e.g., "America/New_York")
+
+  // Notification type toggles
+  dailyReminderEnabled  Boolean  @default(true)
+  lastCallEnabled       Boolean  @default(true)
+  proofReceivedEnabled  Boolean  @default(true)
+  proofApprovedEnabled  Boolean  @default(true)
+  proofRejectedEnabled  Boolean  @default(true)
+  missedDayEnabled      Boolean  @default(true)
+  challengeStartEnabled Boolean  @default(true)
+  challengeEndingEnabled Boolean @default(true)
+  challengeCompleteEnabled Boolean @default(true)
+  payoutEnabled         Boolean  @default(true)
+
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// Notification log for auditing and debugging
+model NotificationLog {
+  id            String             @id @default(uuid())
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId        String
+
+  type          NotificationType
+  channel       NotificationChannel @default(PUSH)
+
+  title         String
+  body          String
+  data          Json?              // Additional payload data
+
+  // Delivery status
+  status        NotificationStatus @default(PENDING)
+  expoReceiptId String?            // Expo push receipt ID for tracking
+  errorMessage  String?            // If delivery failed
+
+  // Related entities (optional)
+  challengeId   String?
+  submissionId  String?
+
+  sentAt        DateTime           @default(now())
+  deliveredAt   DateTime?
+  readAt        DateTime?
+
+  @@index([userId])
+  @@index([type])
+  @@index([status])
+  @@index([sentAt])
+  @@index([challengeId])
+}
+
+enum NotificationType {
+  DAILY_REMINDER      // Evening reminder to submit proof
+  LAST_CALL           // 2-3 hours before cutoff
+  PROOF_RECEIVED      // Proof submitted successfully
+  PROOF_APPROVED      // Proof was approved
+  PROOF_REJECTED      // Proof was rejected - resubmit
+  MISSED_DAY          // User missed previous day
+  CHALLENGE_START     // Challenge begins today
+  CHALLENGE_ENDING    // Challenge ending soon (1-2 days)
+  CHALLENGE_COMPLETE  // User completed the challenge
+  PAYOUT_AVAILABLE    // Funds ready to withdraw
+  DISPUTE_RESOLVED    // Dispute has been resolved
+  SYSTEM              // System announcements
+}
+
+enum NotificationChannel {
+  PUSH
+  EMAIL
+  IN_APP
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  DELIVERED
+  FAILED
+  READ
+}
+
+// ==================== PAYOUT SYSTEM ====================
+
+model PayoutJob {
+  id              String          @id @default(uuid())
+
+  // What to pay
+  userId          String
+  challengeId     String
+  amount          Int             // microUSDC (6 decimals) — NO floats for money
+
+  // Type & context
+  type            PayoutType
+  dayDate         String          // "2026-02-23" — which challenge day this is for
+
+  // Idempotency
+  idempotencyKey  String          @unique // "{challengeId}:{userId}:{dayDate}:{type}"
+
+  // Queue state
+  status          PayoutJobStatus @default(QUEUED)
+  attempts        Int             @default(0)
+  maxAttempts     Int             @default(3)
+  nextAttemptAt   DateTime?
+  lastError       String?
+
+  // Result
+  transactionSignature String?    // Solana tx hash on success
+  walletAddress   String?         // Resolved recipient wallet
+
+  // Relations
+  user            User            @relation(fields: [userId], references: [id])
+  challenge       Challenge       @relation(fields: [challengeId], references: [id])
+
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  processedAt     DateTime?       // When COMPLETED or permanently FAILED
+
+  @@index([status, nextAttemptAt])
+  @@index([challengeId, dayDate])
+  @@index([userId, challengeId])
+}
+
+model DailySettlement {
+  id              String   @id @default(uuid())
+  challengeId     String
+  dayDate         String   // "2026-02-23"
+
+  // Settlement data
+  totalActive     Int      // Active participants for this day
+  showedUp        Int      // Users with approved submissions
+  missed          Int      // Users without approved submissions
+  baseDailyRate   Int      // microUSDC per user per day
+  bonusPerPerson  Int      // microUSDC bonus from no-shows
+  totalDistributed Int     // Total microUSDC distributed
+
+  // Status
+  settledAt       DateTime @default(now())
+
+  challenge       Challenge @relation(fields: [challengeId], references: [id])
+
+  @@unique([challengeId, dayDate])
+  @@index([challengeId])
+}
+
+enum PayoutType {
+  DAILY_BASE
+  DAILY_BONUS
+  DUST_SWEEP
+}
+
+enum PayoutJobStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}

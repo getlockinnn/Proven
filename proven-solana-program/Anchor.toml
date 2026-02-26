@@ -1,0 +1,27 @@
+[toolchain]
+
+[features]
+resolution = true
+skip-lint = false
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+# Default Anchor interactions (e.g. `anchor test`) run against a local
+# validator to avoid colliding with the devnet deployment authority.
+cluster = "Localnet"
+wallet = "~/.config/solana/id.json"
+
+[programs.devnet]
+proven_stake = "8UMUh8uz4QAd5K5j4vSB5fGXTfCngJc4Gf1YJuydT9qw"
+
+[programs.localnet]
+# Reuse the same program id for local testing; the local validator has no
+# existing deployment, so upgrade authority conflicts are avoided.
+proven_stake = "2axKJmSNPkdAysQXjz7y2R2Tho58WbzLYgYcAsMgfMKc"
+
+[scripts]
+build = "anchor build"
+deploy = "anchor deploy"
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"

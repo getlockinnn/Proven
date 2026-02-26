@@ -1,0 +1,13 @@
+[workspace]
+members = ["programs/proven-stake"]
+resolver = "2"
+
+[profile.release]
+overflow-checks = true
+lto = true
+opt-level = "s"
+
+[patch.crates-io]
+proc-macro2 = { path = "vendor/proc-macro2" }
+anchor-syn = { path = "vendor/anchor-syn" }
+anchor-attribute-program = { path = "vendor/anchor-attribute-program" }
