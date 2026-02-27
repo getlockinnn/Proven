@@ -28,7 +28,7 @@ Most habit apps fail at long-term accountability because there is little consequ
 
 ## Demo Video
 
-- [Watch the demo on YouTube](https://www.youtube.com/watch?v=4xKfWiuMFcI)
+[![Watch the demo](https://img.youtube.com/vi/4xKfWiuMFcI/hqdefault.jpg)](https://www.youtube.com/watch?v=4xKfWiuMFcI)
 
 ## Repository Structure
 
