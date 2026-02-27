@@ -26,6 +26,10 @@ Most habit apps fail at long-term accountability because there is little consequ
 - Admin operations for disputes, settlements, and challenge closure
 - On-chain program for escrow/challenge lifecycle primitives
 
+## Demo Video
+
+- [Watch the demo on YouTube](https://www.youtube.com/watch?v=4xKfWiuMFcI)
+
 ## Repository Structure
 
 ```text
@@ -199,4 +203,3 @@ Backend deployment guidance:
 - Rotate JWT and encryption secrets regularly
 - Restrict CORS and admin access in production
 - Keep payout and settlement operations idempotent
-
